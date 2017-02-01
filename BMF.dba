@@ -1,0 +1,219 @@
+Rem *** Include File: BMF.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+global texts as integer
+global chars as integer
+
+function initBMfonts()
+
+  Dim BMleft(127)
+  Dim BMwidth(127)
+  dim FontImageNumber(131) as dword
+  dim BMSprites(,) as dword
+  
+  texts = -1
+  chars = -1
+
+endfunction
+
+`*********************************
+`       LOAD BITMAP FONT
+`*********************************
+Function LoadBMfont(FileName as string)
+
+  FontImageNumber(0) = load_img(FileName, 1)
+  Font = 32
+  For y = 0 to 9
+    for x = 0 to 9
+      GetImage(Font, x*64, y*64, 64, 64 )
+      inc Font
+    next x
+  next y
+  Delete Image FontImageNumber(0)
+
+endfunction
+
+`*********************************
+`   GET IMAGE WITH TRANSPARENCY
+`*********************************
+function GetImage(NewImage,Xstart,Ystart,Xsize as dword,Ysize as dword)
+
+  `Set up variables
+  Local Width as Dword
+  Local Height as Dword
+  Local Depth as Dword
+  Local Red as Byte
+  Local Green as Byte
+  Local Blue as Byte
+  Local Alpha as Byte
+
+  `Do it!
+  Memblock1 = free_mem()
+  make memblock from image Memblock1,FontImageNumber(0)
+  Width = memblock dword(Memblock1,0)
+  Height = memblock dword(Memblock1,4)
+  Depth = memblock dword(Memblock1,8)
+  NewMemblock = free_mem()
+  make memblock NewMemblock,(Width*Height)+12
+
+  Write memblock Dword NewMemblock,0,Xsize
+  Write memblock Dword NewMemblock,4,Ysize
+  Write memblock Dword NewMemblock,8,Depth
+
+  Position = (Width  * (Ystart)*4) + (Xstart*4) + 12
+  NewPosition = 12
+
+  for y = 1 to Ysize
+    for x = 1 to Xsize
+
+        Blue = memblock byte(Memblock1,Position)
+        Green = memblock byte(Memblock1,Position+1)
+        Red = memblock byte(Memblock1,Position+2)
+        Alpha = memblock byte(Memblock1, Position+3)
+
+        write memblock byte NewMemblock,NewPosition,Blue
+        write memblock byte NewMemblock,NewPosition+1,Green
+        write memblock byte NewMemblock,NewPosition+2,Red
+        write memblock byte NewMemblock,NewPosition+3,Alpha
+
+        inc Position,4
+        inc NewPosition,4
+
+    next x
+    inc Position , (width*4) - (Xsize*4)
+  next y
+
+  FontImageNumber(NewImage) = free_img()
+  make image from memblock FontImageNumber(NewImage),NewMemblock
+  delete memblock Memblock1
+  delete memblock NewMemblock
+
+endfunction
+
+`*********************************
+`       TRIM BITMAP FONT
+`*********************************
+Function TrimBMFont()
+
+  Local BlankColumn as boolean
+  Local Alpha as byte
+  Local Chr as integer
+  Local FontWidth as integer = 64
+  Local FontHeight as integer = 64
+  
+  local TrimMemblock as dword
+
+  TrimMemblock = free_mem()
+
+  For Chr = 33 to 126
+    Make Memblock From Image 1 , FontImageNumber(Chr)
+    for x = 1 to FontWidth
+      BlankColumn = Yes
+      for y = 1 to FontHeight - 1
+
+        if BMleft(Chr) = 0
+          Position = (y * FontWidth * 4) + (x * 4) + 15
+          Alpha = memblock byte(TrimMemblock, Position)
+
+          if Alpha > 0
+            BlankColumn = No
+            y = FontHeight - 1
+          endif
+        endif
+
+      next y
+
+      if BlankColumn = No
+        BMleft(Chr) = x / 2
+        x = FontWidth
+      endif
+
+    next x
+
+    for x = FontWidth - 1 to 1 step - 1
+      BlankColumn = Yes
+      for y = 1 to FontHeight - 1
+
+        if BMwidth(Chr) = 0
+          Position = (y * FontWidth * 4) + (x * 4) + 15
+          Alpha = memblock byte(TrimMemblock, Position)
+
+          if Alpha > 0
+            BlankColumn = No
+            y = FontHeight
+          endif
+        endif
+
+      next y
+
+      if BlankColumn = No
+        BMwidth(Chr) = (x - BMleft(Chr)) / 2
+        x = 1
+      endif
+
+    next x
+    delete memblock TrimMemblock
+
+  next Chr
+
+  BMleft(32) = 0
+  BMwidth(32) = FontWidth / 4
+
+endfunction
+
+`*********************************
+`      DISPLAY BITMAP FONT
+`*********************************
+Function BMFont(X,Y,S as string, TextNo,Kern)
+
+  if len(S) > chars
+    chars = len(S)
+    dim BMSprites(texts, chars) as dword
+  endif
+
+  for k = 1 to len(S)
+    Chr = asc(mid$(S,k))
+
+    if BMSprites(TextNo, k) = 0 then BMSprites(TextNo, k) = free_spr()
+
+    if k > 1
+      sprite BMSprites(TextNo, k),NewX - BMleft(Chr) ,Y ,FontImageNumber(Chr)
+      NewX = (NewX) + BMwidth(Chr) + Kern
+    else
+      sprite BMSprites(TextNo, k),X - BMleft(Chr) ,Y ,FontImageNumber(Chr)
+      NewX = X + BMwidth(Chr) + Kern
+    endif
+    
+    scale sprite BMSprites(TextNo, k), 50
+
+  next k
+
+endfunction
+
+function NewText()
+
+  inc texts
+  dim BMSprites(texts, chars) as dword
+
+endfunction texts
+
+function DeleteTexts()
+
+  local x as dword
+  local y as dword
+  
+  if chars < 0 or texts < 0 then exitfunction
+  
+  for x = 0 to chars
+    for y = 0 to texts
+      if BMSprites(x, y) then delete sprite BMSprites(x, y)
+    next y
+  next x
+  
+  empty array BMSprites(x, y)
+  texts = -1
+  chars = -1
+  
+endfunction

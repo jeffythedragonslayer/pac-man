@@ -1,0 +1,43 @@
+Rem *** Include File: Number.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+`returns the sign of a number
+`update 11:34 AM 9/13/2008, DBPro now supports sgn function
+remstart
+function sgn(num as integer)
+
+  local sign as integer
+
+  if num > 0
+    sign = 1
+  else
+    if num
+      sign = -1
+    else
+      sign = 0
+    endif
+  endif
+
+endfunction sign
+remend
+
+`returns the opposite direction
+function reverse_dir(direction as dword)
+  
+  if direction
+    inc direction, 2
+    if direction > 4 then dec direction, 4
+  endif
+  
+endfunction direction
+
+`returns the Manhattan distance between 2 points
+function manhattan(x1 as integer, y1 as integer, x2 as integer, y2 as integer)
+
+  local distance as dword
+  
+  distance = abs(x1 - x2) + abs(y1 - y2)
+
+endfunction distance

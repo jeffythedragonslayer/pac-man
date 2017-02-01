@@ -1,0 +1,40 @@
+Rem *** Include File: Media Allocate.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+function load_img(filename as string, textureflag as boolean)
+  local id as dword
+  id = free_img()
+  load image filename, id, textureflag
+endfunction id
+
+function get_img(left as dword, top as dword, right as dword, bottom as dword, textureflag as boolean)
+  local id as dword
+  id = free_img()
+  get image id, left, top, right, bottom, textureflag
+endfunction id
+
+function load_sound(filename as string)
+  local id as dword
+  id = free_sound()
+  load sound filename, id
+endfunction id
+
+function make_spr(xpos as dword, ypos as dword, img as dword)
+  local id as dword
+  id = free_spr()
+  sprite id, xpos, ypos, img
+endfunction id
+
+function open_to_read(filename as string)
+  local id as dword
+  id = free_file()
+  open to read id, filename
+endfunction id
+
+function open_to_write(filename as string)
+  local id as dword
+  id = free_file()
+  open to write id, filename
+endfunction id

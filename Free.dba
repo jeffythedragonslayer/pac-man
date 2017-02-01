@@ -1,0 +1,43 @@
+Rem *** Include File: Free.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+function free_img()
+  local id as dword
+  repeat
+    inc id
+  until image exist(id) = 0
+endfunction id
+
+function free_spr()
+  local id as dword
+  repeat
+    inc id
+  until sprite exist(id) = 0
+endfunction id
+
+function free_sound()
+  local id as dword
+  repeat
+    inc id
+  until sound exist(id) = 0
+endfunction id
+
+function free_file()
+  local id as dword
+  repeat
+    inc id
+    if id = 33
+      id = 0
+      exitfunction id
+    endif
+  until file open(id) = 0
+endfunction id
+
+function free_mem()
+  local id as dword
+  repeat
+    inc id
+  until memblock exist(id) = 0
+endfunction id

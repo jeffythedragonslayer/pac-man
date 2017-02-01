@@ -1,0 +1,32 @@
+Rem *** Include File: Menu.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+global menu_inited as boolean
+
+`run the main menu
+function main_menu()
+
+  `if menu is not already loaded, load it
+  if menu_inited = 0 then init_menu()
+
+  `*** Temporary Code ***
+  `play the game
+  play()
+  `*** Temporary Code ***
+
+  `menu loop
+  do
+    `get user selection
+    `process user selection
+  loop
+
+endfunction
+
+`load the menu's images and sprites
+function init_menu()
+
+  menu_inited = 1
+
+endfunction

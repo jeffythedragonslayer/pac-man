@@ -1,0 +1,17 @@
+Rem Project: Pac-Man
+Rem Created: [date] [time]
+
+Rem ***** Main Source File *****
+
+`global arrays
+dim chunk(2, 2) as dword
+dim map(2, 2) as dword
+initBMfonts()
+
+`setup
+sync on
+sync rate 45
+hide mouse
+randomize timer()
+
+main_menu()

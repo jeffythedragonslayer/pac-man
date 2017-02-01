@@ -1,0 +1,1003 @@
+Rem *** Include File: Game.dba ***
+Rem Created: [date] [time]
+
+Rem Included in Project: Pac-Man.dbpro
+
+global game_inited as boolean
+
+global img_pac as dword
+global spr_pac as dword
+global img_sdot as dword
+global img_bdot as dword
+global spr_fruit as dword
+global spr_pac_die as dword
+global img_pac_die as dword
+
+global maze_rows as dword
+global maze_columns as dword
+
+global pos_ghost_pen as coordinate
+global pos_pac_spawn as coordinate
+global pos_message as coordinate
+
+global pac_try as dword
+global pac_dir as dword
+
+global score as dword
+global hiscore as dword
+global level as dword
+global lives as dword
+global blue_ghosts as dword
+global ghosts_eaten as dword
+
+global bonus as boolean
+global total_dots as dword
+
+global spr_message as dword
+global img_ready as dword
+global img_game_over as dword
+
+global snd_ready as dword
+global snd_eat_fruit as dword
+global snd_eat_dot as dword
+global snd_eat_ghost as dword
+global snd_bonus as dword
+global snd_die as dword
+
+global text_score as dword
+global text_level as dword
+global text_lives as dword
+
+global cycle as dword
+
+#constant move_speed = 2
+#constant anim_speed = 75
+#constant cycles = 8
+
+type yum
+  id as dword
+  size as boolean
+endtype
+
+type fruit
+  id as dword
+  eaten as boolean
+endtype
+
+type wall
+  id as dword
+  solid as dword
+  food as dword
+endtype
+
+type coordinate
+  x as integer
+  y as integer
+endtype
+
+type ghost
+  id as dword
+  direction as dword
+endtype
+
+`play the game
+function play()
+
+  `if menu is not already loaded, load it
+  if game_inited = 0 then init_game()
+
+  level_up()
+  ready()
+  game_loop()
+  
+endfunction
+
+`move to the next level
+function level_up()
+
+  inc level
+  make_dots()
+  respawn_pac()
+  respawn_ghosts()
+  
+  `make the fruit dissappear
+  hide sprite spr_fruit
+  
+  break
+  
+  `update hud
+  if text_level then BMFont(640, 96, "Level: " + str$(level), text_level, 0)
+
+endfunction
+
+`fill the board with dots
+function make_dots()
+
+  local x as dword
+  local y as dword
+  
+  `check each tile
+  for y = 1 to maze_rows
+    for x = 1 to maze_columns
+      
+      `make a dot at this tile if there's supposed to be one
+      if sprs_maze(x, y).food
+        make_dot(sprs_maze(x, y).food - 1, x*32 + 16, y*32 + 16)
+        
+        `make dots halfway between tiles
+        if sprs_maze(x+1, y).food
+          make_dot(0, (x+1) * 32, y*32 + 16)
+        endif
+        if sprs_maze(x, y+1).food
+          make_dot(0, x*32 + 16, (y+1) * 32)
+        endif
+      endif
+
+    next x
+  next y
+  
+  `count total dots
+  total_dots = array count(sprs_dots(0)) + 1
+   
+endfunction
+
+`make a dot
+function make_dot(size as boolean, xpix as dword, ypix as dword)
+
+  `make a new dot array slot
+  array insert at bottom sprs_dots()
+  
+  `copy size argument into array
+  sprs_dots().size = size
+
+  `make dot sprite
+  if size
+    sprs_dots().id = make_spr(xpix, ypix, img_bdot)
+  else
+    sprs_dots().id = make_spr(xpix, ypix, img_sdot)
+  endif
+  
+  `center dot on coordinates
+  offset sprite sprs_dots().id, sprite width(sprs_dots().id) / 2, sprite height(sprs_dots().id) / 2
+
+  `turn off backsave and transparency
+  set sprite sprs_dots().id, 0, 0
+
+endfunction
+
+`place pac-man in the spawn area
+function respawn_pac()
+
+    sprite spr_pac, pos_pac_spawn.x*32, pos_pac_spawn.y*32, img_pac
+    set sprite frame spr_pac, 1
+    pac_dir = 0
+       
+endfunction
+
+`place the ghosts in the ghost pen
+function respawn_ghosts()     
+
+  local ghost as dword
+
+  for ghost = 0 to 4
+    respawn_ghost(ghost)
+  next ghost
+  
+endfunction
+
+`place the ghost in the ghost pen
+function respawn_ghost(ghost as dword)
+
+  sprite sprs_ghosts(ghost).id, pos_ghost_pen.x*32, pos_ghost_pen.y*32, imgs_ghosts(ghost)
+  set sprite alpha sprs_ghosts(ghost).id, 0
+
+endfunction
+
+`play the music and display "Ready" at the start of the game
+function ready()
+
+  lives = 3
+  
+  `display "Ready!"
+  sprite spr_message, pos_message.x*32 - 30, pos_message.y*32 + 9, img_ready
+  show sprite spr_message
+
+  `reset text system
+  DeleteTexts()
+  text_score = NewText()
+  text_level = NewText()
+  text_lives = NewText()
+  BMFont(640, 32, "Score: " + str$(score), text_score, 0)
+  BMFont(640, 96, "Level: " + str$(level), text_level, 0)
+  BMFont(640, 160, "Lives: " + str$(lives), text_lives, 0)
+  
+  `play fanfare
+  play sound snd_ready
+  
+  `wait until fanfare is done
+  while sound playing(snd_ready)
+  
+    cls
+  
+    sync
+  
+  endwhile
+  
+  `hide message sprite
+  hide sprite spr_message
+  
+endfunction
+
+`the game's main loop
+
+function game_loop()
+
+  do
+  
+    TEXT 0, 10, "HI"
+  
+    inc cycle
+    if cycle > cycles then cycle = 1
+
+    cls
+
+    get_pac_move()
+    get_ghost_move()
+
+    move_pac()
+    move_ghosts()
+
+    collision()
+    if lives = 0 then exitfunction
+    
+    text 0, 0, "Frames Per Second: " + str$(screen fps())
+
+    sync
+
+  loop
+
+endfunction
+
+`get player input
+function get_pac_move()
+
+  select pac_try
+    case 0
+      if upkey() then pac_try = 1
+      if rightkey() then pac_try = 2
+      if downkey() then pac_try = 3
+      if leftkey() then pac_try = 4
+    endcase
+    case 1
+      if upkey() = 0 then pac_try = 0
+    endcase
+    case 2
+      if rightkey() = 0 then pac_try = 0
+    endcase
+    case 3
+      if downkey() = 0 then pac_try = 0
+    endcase
+    case 4
+      if leftkey() = 0 then pac_try = 0
+    endcase
+  endselect
+
+endfunction
+
+ `do ghost AI
+function get_ghost_move()
+
+  local xpos as dword
+  local ypos as dword
+  local row as dword
+  local column as dword
+  local ghost as dword
+  local dim directions() as dword
+  local justspawned as boolean
+  local count as integer
+  local element as dword
+  local pacx as dword
+  local pacy as dword
+  local desired as dword
+  local sign as integer
+  local alpha as dword
+  
+  `cache Pac-Man position for AI calculation
+  pacx = sprite x(spr_pac)/32
+  pacy = sprite y(spr_pac)/32
+  
+  for ghost = 0 to 4
+  
+    `cache ghost position
+    xpos = sprite x(sprs_ghosts(ghost).id)
+    ypos = sprite y(sprs_ghosts(ghost).id)
+    
+    `find current tile ghost is in
+    column = xpos/32
+    row = ypos/32
+    
+    `only change direction if ghost is completely in a square
+    if xpos/32.0 = column and ypos/32.0 = row
+      
+      `reset direction array
+      empty array directions(0)
+      count = -1
+      
+      `if ghost isn't fully spawned, don't allow any movement
+      alpha = sprite alpha(sprs_ghosts(ghost).id)
+      if alpha < 255
+        if blue_ghosts = 0 then set sprite alpha sprs_ghosts(ghost).id, alpha + 1
+      else
+      
+        `check to see if the ghost is standing on the spawn spot
+        justspawned = 0
+        if column = pos_ghost_pen.x and row = pos_ghost_pen.y then justspawned = 1
+      
+        `perform checklist for possible direction changes
+        if sprs_maze(column, row-1).solid = 0 or (sprs_maze(column, row-1).solid = 2 and justspawned)
+          array insert at bottom directions()
+          directions() = 1
+          inc count
+        endif
+        if sprs_maze(column+1, row).solid = 0 or (sprs_maze(column+1, row).solid = 2 and justspawned)
+          array insert at bottom directions()
+          directions() = 2
+          inc count
+        endif
+        if sprs_maze(column, row+1).solid = 0 or (sprs_maze(column, row+1).solid = 2 and justspawned)
+          array insert at bottom directions()
+          directions() = 3
+          inc count
+        endif
+        if sprs_maze(column-1, row).solid = 0 or (sprs_maze(column-1, row).solid = 2 and justspawned)
+          array insert at bottom directions()
+          directions() = 4
+        inc count
+        endif
+      
+        `if Pac-Man is visible, change start ghost going towards him
+        if pacx = column or pacy = row
+      
+          `find direction needed to get to Pac-Man
+          desired = 0
+          if pacy < row then desired = 1
+          if pacx > column then desired = 2
+          if pacy > row then desired = 3
+          if pacx < column then desired = 4
+        
+          `make ghost run away from Pac-Man if ghost is vulnerable
+          if blue_ghosts and desired
+            inc desired, 2
+            if desired > 4 then dec desired, 4
+          endif
+        
+          `make sure ghost isn't looking through walls
+          if desired = 1 or desired = 3
+            `check for clear pathways on y axis
+            sign = sgn(pacy-row)
+            for element = row to pacy step sign
+              if sprs_maze(column, element).solid = 1
+                `wall found, ghost cannot see Pac-Man
+                desired = 0
+                exit
+              endif
+            next element
+          else
+            `check for clear pathways on x axis
+            sign = sgn(pacx-column)
+            for element = column to pacx step sign
+              if sprs_maze(element, row).solid = 1
+                `wall found, ghost cannot see Pac-Man
+                desired = 0
+                exit
+              endif
+            next element
+          endif
+        
+          `check if desired direction is allowed, if so delete all the others
+          for element = 0 to count
+            if directions(element) = desired
+              empty array directions(0)
+              array insert at top directions(0)
+              directions() = desired
+              count = 0
+            endif
+          next element
+        
+        endif
+      
+        `delete the direction the ghost just came from
+        `to prevent the ghost from moving back and forth
+        if count > 0
+        
+          `find and delete reversed direction
+          for element = 0 to count
+            if directions(element) = reverse_dir(sprs_ghosts(ghost).direction)
+              array delete element directions(0), element
+              dec count
+              element = count
+            endif
+          next element
+        
+        endif
+      
+      endif
+      
+      `choose a direction from the checklist
+      if count > -1
+        sprs_ghosts(ghost).direction = directions(rnd(array count(directions(0))))
+        move_ghost_animation(ghost)
+      else
+        sprs_ghosts(ghost).direction = 0
+      endif
+      
+    endif
+  
+  next ghost
+
+endfunction
+
+`move pac-man
+function move_pac()
+
+  local xpos as dword
+  local ypos as dword
+  local row as dword
+  local column as dword
+
+  `cache Pac-Man position
+  xpos = sprite x(spr_pac)
+  ypos = sprite y(spr_pac)
+
+  `find current tile Pac-Man is in
+  column = xpos/32
+  row = ypos/32
+  
+  `check if Pac-Man is completely in a tile
+  if xpos/32.0 = column and ypos/32.0 = row
+    `Pac-Man is completely in a square, now give player chance to change direction
+    `if there's an open tile
+    select pac_try
+      case 1
+        if sprs_maze(column, row-1).solid = 0
+          pac_dir = 1
+          move_pac_animation()
+        endif
+      endcase
+      case 2
+        if sprs_maze(column+1, row).solid = 0
+          pac_dir = 2
+          move_pac_animation()
+        endif
+      endcase
+      case 3
+        if sprs_maze(column, row+1).solid = 0
+          pac_dir = 3
+          move_pac_animation()
+        endif
+      endcase
+      case 4
+        if sprs_maze(column-1, row).solid = 0
+          pac_dir = 4
+          move_pac_animation()
+        endif
+      endcase
+    endselect
+    
+    `stop Pac-Man from moving if he's about to walk into a wall
+    select pac_dir
+      case 1
+        if sprs_maze(column, row-1).solid => 1
+          pac_dir = 0
+          move_pac_mouth()
+        endif
+      endcase
+      case 2
+        if sprs_maze(column+1, row).solid => 1
+          pac_dir = 0
+          move_pac_mouth()
+        endif
+      endcase
+      case 3
+        if sprs_maze(column, row+1).solid => 1
+          pac_dir = 0
+          move_pac_mouth()
+        endif
+      endcase
+      case 4
+        if sprs_maze(column-1, row).solid => 1
+          pac_dir = 0
+          move_pac_mouth()
+        endif
+      endcase
+    endselect
+    
+  else
+    if reverse_dir(pac_try) = pac_dir
+      pac_dir = pac_try
+      move_pac_animation()
+    endif
+  endif
+  
+  select pac_dir
+    case 1
+      dec ypos, move_speed
+      play sprite spr_pac, 7, 8, anim_speed
+    endcase
+    case 2
+      inc xpos, move_speed
+      play sprite spr_pac, 1, 2, anim_speed
+    endcase
+    case 3
+      inc ypos, move_speed
+      play sprite spr_pac, 3, 4, anim_speed
+    endcase
+    case 4
+      dec xpos, move_speed
+      play sprite spr_pac, 5, 6, anim_speed
+    endcase
+  endselect
+  
+  sprite spr_pac, xpos, ypos, img_pac
+  
+endfunction
+
+`set correct animation frame when Pac-Man changes direction
+function move_pac_animation()
+
+  select pac_dir
+    case 1
+      set sprite frame spr_pac, 7
+    endcase
+    case 2
+      set sprite frame spr_pac, 1
+    endcase
+    case 3
+      set sprite frame spr_pac, 3
+    endcase
+    case 4
+      set sprite frame spr_pac, 5
+    endcase
+  endselect
+
+endfunction
+
+`make Pac-Man close his mouth
+function move_pac_mouth()
+
+  local frame as dword
+  
+  frame = sprite frame(spr_pac)
+  if frame/2 = frame/2.0 then set sprite frame spr_pac, frame - 1
+  
+endfunction
+
+`move ghosts
+function move_ghosts()
+
+  local xpos as dword
+  local ypos as dword
+  local ghost as dword
+  local speed as dword
+  
+  `if ghosts are blue, slow them down
+  if blue_ghosts
+    speed = move_speed/2
+  else
+    speed = move_speed
+  endif
+
+  for ghost = 0 to 4
+
+    `cache ghost position
+    xpos = sprite x(sprs_ghosts(ghost).id)
+    ypos = sprite y(sprs_ghosts(ghost).id)
+  
+    select sprs_ghosts(ghost).direction
+      case 1
+        dec ypos, speed
+        play sprite sprs_ghosts(ghost).id, 7, 8, anim_speed
+      endcase
+      case 2
+        inc xpos, speed
+        play sprite sprs_ghosts(ghost).id, 1, 2, anim_speed
+      endcase
+      case 3
+        inc ypos, speed
+        play sprite sprs_ghosts(ghost).id, 3, 4, anim_speed
+      endcase
+      case 4
+        dec xpos, speed
+        play sprite sprs_ghosts(ghost).id, 5, 6, anim_speed
+      endcase
+    endselect
+  
+    sprite sprs_ghosts(ghost).id, xpos, ypos, imgs_ghosts(ghost)
+    
+  next ghost
+
+endfunction
+
+`set correct animation frame when ghost changes direction
+function move_ghost_animation(ghost as dword)
+
+  select sprs_ghosts(ghost).direction
+    case 1
+      set sprite frame sprs_ghosts(ghost).id, 7
+    endcase
+    case 2
+      set sprite frame sprs_ghosts(ghost).id, 1
+    endcase
+    case 3
+      set sprite frame sprs_ghosts(ghost).id, 3
+    endcase
+    case 4
+      set sprite frame sprs_ghosts(ghost).id, 5
+    endcase
+  endselect
+
+endfunction
+
+`do collision
+function collision()
+
+  local xpos as integer
+  local ypos as integer
+  local dots as dword
+  local num as dword
+  local ghost as dword
+  local dim xghost(4) as integer
+  local dim yghost(4) as integer
+  
+  xpos = sprite x(spr_pac)
+  ypos = sprite y(spr_pac)
+
+  `maze wrapping
+  `check if Pac-Man is out of bounds
+  if xpos < 32 then xpos = maze_columns * 32
+  if xpos > maze_columns * 32 then xpos = 32
+  if ypos < 32 then ypos = maze_rows * 32
+  if ypos > maze_rows * 32 then ypos = 32
+
+  sprite spr_pac, xpos, ypos, img_pac
+  
+  inc xpos, 16
+  inc ypos, 16
+  
+  `check if ghost is out of bounds
+  for ghost = 0 to 4
+  
+    xghost(ghost) = sprite x(sprs_ghosts(ghost).id)
+    yghost(ghost) = sprite y(sprs_ghosts(ghost).id)
+    
+    if xghost(ghost) < 32 then xghost(ghost) = maze_columns * 32
+    if xghost(ghost) > maze_columns * 32 then xghost(ghost) = 32
+    if yghost(ghost) < 32 then yghost(ghost) = maze_rows * 32
+    if yghost(ghost) > maze_rows * 32 then yghost(ghost) = 32
+    
+    sprite sprs_ghosts(ghost).id, xghost(ghost), yghost(ghost), imgs_ghosts(ghost+1)
+    
+    inc xghost(ghost), 16
+    inc yghost(ghost), 16
+  
+  next ghost
+  
+  `ghosts and Pac-Man eat each other
+  if blue_ghosts
+    `eat ghosts
+    
+    `decrement blue ghost timer
+    dec blue_ghosts
+    
+    `if blue ghost timer hasn't run out, do Pac-Man eating ghost collision
+    `otherwise make ghosts invincible again
+    if blue_ghosts
+      `do eat ghost collision    
+      for ghost = 0 to 4
+        `calculate Manhattan distance between Pac-Man and ghost
+        if manhattan(xghost(ghost), yghost(ghost), xpos, ypos) <= 27
+          eat_ghost(ghost)
+          exit
+        endif
+      next ghost
+      
+    else      
+      invinciblize_ghosts()
+    endif
+    
+  else
+    `get eaten
+    
+    for ghost = 0 to 4
+      `calculate Manhattan distance between Pac-Man and ghost
+      if manhattan(xghost(ghost), yghost(ghost), xpos, ypos) <= 27
+        get_eaten()
+        if lives = 0 then exitfunction
+        exit
+      endif
+    next ghost
+    
+  endif
+  
+  `eat dots
+  if cycle = 1
+    dots = array count(sprs_dots(0))
+    for num = 0 to dots
+      `calculate Manhattan distance between Pac-Man and dot
+      if manhattan(sprite x(sprs_dots(num).id), sprite y(sprs_dots(num).id), xpos, ypos) <= 14
+        eat_dot(num)
+        if dots = 0 then level_up()
+        exit
+      endif
+    next num
+  endif
+  
+  `eat fruits
+  `calculate Manhattan distance between Pac-Man and fruit
+  if manhattan(pos_message.x*32 + sprite width(spr_fruit)/2, pos_message.y*32 + sprite height(spr_fruit)/2, xpos, ypos) <= 14 then eat_fruit()
+  
+endfunction
+
+`eat a ghost
+function eat_ghost(ghost as dword)
+  
+  `play ghost eating sound
+  play sound snd_eat_ghost
+  
+  `respawn ghost
+  respawn_ghost(ghost)
+  
+  `give points
+  inc ghosts_eaten
+  inc_score(100*2^ghosts_eaten)
+  
+endfunction
+
+`make ghosts return to normal color
+function invinciblize_ghosts()
+
+  local ghost as dword
+  
+  for ghost = 0 to 4
+    set sprite image sprs_ghosts(ghost).id, imgs_ghosts(ghost+1)
+  next ghost
+  
+  `reset amount of ghosts eaten
+  ghosts_eaten = 0
+
+endfunction
+
+`Pac-Man gets eaten
+function get_eaten()
+
+  `play die sound
+  play sound snd_die
+  
+  `setup die animation
+  hide sprite spr_pac
+  show sprite spr_pac_die
+  sprite spr_pac_die, sprite x(spr_pac), sprite y(spr_pac), img_pac_die
+  set sprite frame spr_pac_die, 1
+  
+  `play die animation
+  while sound playing(snd_die)
+  
+    cls
+  
+    `if the last frame hasn't been reached yet, keep playing the animation
+    if sprite frame(spr_pac_die) < 10 then play sprite spr_pac_die, 1, 10, 100
+    
+    sync
+    
+  endwhile
+  
+  
+  `clean up die animation
+  hide sprite spr_pac_die
+  show sprite spr_pac  
+  
+  `take away a life
+  dec lives
+  
+  `update hud
+  BMFont(640, 160, "Lives: " + str$(lives), text_lives, 0)
+      
+  if lives = 0
+    game_over()
+    exitfunction
+  endif
+  
+  `respawn Pac-Man and ghosts
+  respawn_pac()
+  respawn_ghosts()
+  
+endfunction
+
+`display "Game Over" sprite
+function game_over()
+
+  local starttimer as dword
+  
+  `hide fruit sprite
+  hide sprite spr_fruit
+
+  `display sprite
+  sprite spr_message, pos_message.x*32 - 51, pos_message.y*32 + 9, img_game_over
+  show sprite spr_message
+  
+  `wait a few seconds
+  starttimer = timer() + 2000
+  repeat
+  
+    cls
+    
+    sync
+    
+  until timer() => starttimer or spacekey()
+  
+endfunction
+
+`increment score
+function inc_score(points as dword)
+
+  `give points
+  inc score, points
+
+  `give bonus life
+  if score >= 10000
+    if bonus = 0
+      inc lives
+      bonus = 1
+      
+      `play bonus life sound
+      play sound snd_bonus
+      
+      break
+      
+      `update hud
+      BMFont(640, 96, "Lives: " + str$(lives), text_lives, 0)
+      
+    endif
+  endif
+  
+  `update hud
+  BMFont(640, 32, "Score: " + str$(score), text_score, 0)
+  
+endfunction
+
+`eat a fruit
+function eat_fruit()
+
+  local fruit as dword
+  local points as dword
+
+  `Pac-Man can't eat a fruit if it doesn't exist
+  if sprite visible(spr_fruit) = 0 then exitfunction
+  
+  `make the fruit dissappear
+  hide sprite spr_fruit
+  
+  `record that the current fruit has been eaten
+  for fruit = 0 to 11
+    if imgs_fruits(fruit).id = sprite image(spr_fruit)
+      imgs_fruits(fruit).eaten = 1
+      exit
+    endif
+  next fruit
+  
+  `award points
+  if level => 12
+    points = 30000
+  else
+    restore fruit_points
+    for fruit = 1 to level
+      read points
+    next fruit
+  endif
+  
+  inc_score(points)
+  
+  `play fruit eating sound
+  play sound snd_eat_fruit
+  
+endfunction
+
+`eats a dot
+function eat_dot(num as dword)
+
+  local dots as dword
+
+  `delete dot sprite
+  delete sprite sprs_dots(num).id
+  
+  `increment score
+  if sprs_dots(num).size
+    `Pac-Man ate a big dot, give 50 points and turn ghosts blue
+    inc_score(50)
+    vulnerablize_ghosts(450)
+  else
+    `Pac-Man ate a small dot, give 10 points
+    inc_score(10)
+  endif
+  
+  `delete array slot
+  array delete element sprs_dots(0), num
+  
+  `check if enough dots have been eaten to reward the player with a fruit
+  dots = array count(sprs_dots(0)) + 1
+  if dots = total_dots / 3 or dots = (total_dots/3)*2 then make_fruit()
+  
+  `play dot eating sound
+  play sound snd_eat_dot
+  
+endfunction
+
+`make ghosts blue and vulnerable
+function vulnerablize_ghosts(timelimit as integer)
+
+  local ghost as dword
+  
+  `start the blue ghost countdown
+  blue_ghosts = timelimit
+  
+  `change each ghost's image to blue
+  for ghost = 0 to 4
+    set sprite image sprs_ghosts(ghost).id, imgs_ghosts(0)
+  next ghost
+  
+endfunction
+
+`make a fruit appear
+function make_fruit()
+
+  local fruit as dword
+  local dim rnd_fruit() as dword
+
+  `don't make a fruit if the current one hasn't been eaten
+  if sprite visible(spr_fruit) then exitfunction
+  
+  `find which fruits haven't been eaten yet
+  for fruit = 0 to 11
+    if imgs_fruits(fruit).eaten = 0
+      array insert at bottom rnd_fruit(0)
+      rnd_fruit() = fruit
+    endif
+  next fruit
+  
+  `if all fruits have been eaten get new fruits
+  if array count(rnd_fruit(0)) = -1
+  
+    `refresh fruits
+    for fruit = 0 to 11
+      imgs_fruits(fruit).eaten = 0
+    next fruit
+    
+    `pick first fruit at random
+    fruit = rnd(11)
+    
+  else
+
+    `pick a fruit at random from the list of available fruits
+    fruit = rnd_fruit(rnd(array count(rnd_fruit(0))))
+    
+  endif
+  
+  `display fruit
+  set sprite image spr_fruit, imgs_fruits(fruit).id
+  show sprite spr_fruit
+
+endfunction
+
+fruit_points:
+
+data 100
+data 300
+data 500
+data 700
+data 1000
+data 2000
+data 3000
+data 5000
+data 7000
+data 10000
+data 20000
